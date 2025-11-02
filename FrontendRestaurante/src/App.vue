@@ -8,6 +8,7 @@ import CustomerRetentionChart from './components/CustomerRetentionChart.vue'
 import PagamentosChart from './components/PagamentosChart.vue'
 import SalesByChannelChart from './components/SalesByChannelChart.vue'
 import Header from './components/Header.vue'
+import PerformanceByRegionChart from './components/PerformanceByRegionChart.vue'
 
 interface Card {
   icon: string
@@ -70,6 +71,7 @@ onMounted(() => fetchDashboardMetrics())
       </div>
       <RevenueExpensesChart />
       <TopItemsChart />
+      <PerformanceByRegionChart />
     </section>
     <aside class="lg:col-span-4 flex flex-col space-y-6">
       <CustomerRetentionChart />

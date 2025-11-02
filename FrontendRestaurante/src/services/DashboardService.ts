@@ -29,8 +29,8 @@ export default class DashboardService {
     return response.data;
   }
 
-  async getPerformanceByRegionChart(data: TemporalInputDto): Promise<RegionPerformanceDTO[]> {
-    const response = await this.http.post<RegionPerformanceDTO[]>('/dashboard/performanceByRegionChart', data);
+  async getPerformanceByRegionChart(): Promise<RegionPerformanceDTO[]> {
+    const response = await this.http.get<RegionPerformanceDTO[]>('/dashboard/performanceByRegionChart');
     return response.data;
   }
 
