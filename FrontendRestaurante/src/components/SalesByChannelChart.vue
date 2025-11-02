@@ -6,10 +6,10 @@ import ExportButtons from '@/components/ExportButtons.vue'
 import { TemporalInputDto } from '@/DTO/TemporalInputDto'
 import DashboardService from '@/services/DashboardService'
 import http from '@/http'
-import type { PaymentsByTypeDTO } from '@/DTO/PaymentsByTypeDto'
+import type { SalesByChannelDescriptionDTO } from '@/DTO/SalesByChannelDescriptionDto'
 
 const dashboardService = new DashboardService(http)
-const paymentsData = ref<PaymentsByTypeDTO[]>([])
+const channelsData = ref<SalesByChannelDescriptionDTO[]>([])
 const filterType = ref<'day' | 'week' | 'month'>('week')
 const isLoading = ref(false)
 let chart: ApexCharts | null = null
@@ -42,39 +42,39 @@ const dateRange = computed(() => {
   }
 })
 
-async function fetchPayments() {
+async function fetchChannels() {
   isLoading.value = true
   try {
     const dto = new TemporalInputDto(dateRange.value)
-    const response = await dashboardService.getPaymentsByTypeChart(dto)
-    paymentsData.value = Array.isArray(response) ? response : (response as any).data || []
+    const response = await dashboardService.getSalesByChannelDescriptionChart(dto)
+    channelsData.value = Array.isArray(response) ? response : (response as any).data || []
     
     await new Promise(resolve => setTimeout(resolve, 0))
     renderChart()
   } catch (error) {
-    console.error('Erro ao buscar tipos de pagamento:', error)
-    paymentsData.value = []
+    console.error('Erro ao buscar canais de venda:', error)
+    channelsData.value = []
   } finally {
     isLoading.value = false
   }
 }
 
-const paymentsFormatted = computed(() => {
-  if (!paymentsData.value.length) return []
+const channelsFormatted = computed(() => {
+  if (!channelsData.value.length) return []
   
-  const total = paymentsData.value.reduce((sum, item) => sum + item.valor_total, 0)
+  const total = channelsData.value.reduce((sum, item) => sum + item.totalSales, 0)
   
-  return paymentsData.value.map(item => ({
-    tipo: item.tipo_pagamento,
-    valor: item.valor_total,
-    percentual: (item.valor_total / total) * 100
+  return channelsData.value.map(item => ({
+    canal: item.description.replace('Canal ', ''),
+    vendas: item.totalSales,
+    percentual: (item.totalSales / total) * 100
   }))
 })
 
 const exportData = computed(() =>
-  paymentsFormatted.value.map(item => ({
-    'Tipo de Pagamento': item.tipo,
-    'Valor Total': `R$ ${item.valor.toFixed(2)}`,
+  channelsFormatted.value.map(item => ({
+    'Canal': item.canal,
+    'Total de Vendas': item.vendas,
     'Percentual': `${item.percentual.toFixed(2)}%`,
     Período: filterType.value,
     'Data Início': dateRange.value.start_date,
@@ -82,21 +82,21 @@ const exportData = computed(() =>
   }))
 )
 
-const paymentColors: Record<string, string> = {
-  'Cartão de Crédito': '#3b82f6',
-  'Cartão de Débito': '#06b6d4',
-  'PIX': '#f59e0b',
-  'Dinheiro': '#10b981',
-  'Vale Refeição': '#8b5cf6',
-  'Vale Alimentação': '#ec4899'
+const channelColors: Record<string, string> = {
+  'Presencial': '#10b981',
+  'iFood': '#ef4444',
+  'Rappi': '#f97316',
+  'Uber Eats': '#14b8a6',
+  'WhatsApp': '#22c55e',
+  'App Próprio': '#3b82f6'
 }
 
 function renderChart() {
-  if (!paymentsFormatted.value.length) return
+  if (!channelsFormatted.value.length) return
 
-  const labels = paymentsFormatted.value.map(item => item.tipo)
-  const series = paymentsFormatted.value.map(item => item.percentual)
-  const colors = labels.map(label => paymentColors[label] || '#6b7280')
+  const labels = channelsFormatted.value.map(item => item.canal)
+  const series = channelsFormatted.value.map(item => item.percentual)
+  const colors = labels.map(label => channelColors[label] || '#6b7280')
 
   const options = {
     chart: {
@@ -140,9 +140,9 @@ function renderChart() {
       theme: 'dark',
       y: {
         formatter: (val: number, opts: any) => {
-          const item = paymentsFormatted.value[opts.seriesIndex]
+          const item = channelsFormatted.value[opts.seriesIndex]
           if (!item) return `${val.toFixed(2)}%`
-          return `R$ ${item.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${val.toFixed(2)}%)`
+          return `${item.vendas.toLocaleString('pt-BR')} vendas (${val.toFixed(2)}%)`
         }
       }
     },
@@ -160,25 +160,25 @@ function renderChart() {
   }
 
   if (chart) chart.destroy()
-  chart = new ApexCharts(document.querySelector("#pagamentosChart") as HTMLElement, options)
+  chart = new ApexCharts(document.querySelector("#canalChart") as HTMLElement, options)
   chart.render()
 }
 
-watch(filterType, () => fetchPayments())
+watch(filterType, () => fetchChannels())
 
-onMounted(() => fetchPayments())
+onMounted(() => fetchChannels())
 </script>
 
 <template>
   <div class="relative bg-[#262b32] border border-gray-700 rounded-2xl p-6 shadow">
     <!-- Exportação -->
     <div class="absolute top-2 right-2">
-      <ExportButtons :data="exportData" filename="`tipos_pagamento_${filterType}`" />
+      <ExportButtons :data="exportData" :filename="`canais_venda_${filterType}`" />
     </div>
 
     <!-- Título -->
-    <h2 class="text-xl font-bold text-gray-200 mb-2">Tipos de Pagamento</h2>
-    <p class="text-gray-400 mb-4">Análise de como seus clientes estão lhe pagando.</p>
+    <h2 class="text-xl font-bold text-gray-200 mb-2">Canais de Venda</h2>
+    <p class="text-gray-400 mb-4">Onde é o seu nicho competitivo? Delivery ou Presencial?</p>
 
     <!-- Filtros -->
     <div class="mb-4">
@@ -187,15 +187,15 @@ onMounted(() => fetchPayments())
 
     <!-- Loading state -->
     <div v-if="isLoading" class="flex justify-center items-center py-8">
-      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500"></div>
     </div>
 
     <!-- Empty state -->
-    <div v-else-if="paymentsFormatted.length === 0" class="text-center py-8 text-gray-400">
+    <div v-else-if="channelsFormatted.length === 0" class="text-center py-8 text-gray-400">
       Nenhum dado disponível para o período selecionado
     </div>
 
     <!-- Gráfico -->
-    <div id="pagamentosChart" class="w-full" v-show="paymentsFormatted.length > 0"></div>
+    <div id="canalChart" class="w-full" v-show="channelsFormatted.length > 0"></div>
   </div>
 </template>
