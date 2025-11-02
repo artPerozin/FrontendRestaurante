@@ -14,32 +14,44 @@ const filterType = ref<'day' | 'week' | 'month'>('month')
 const isLoading = ref(false)
 let chart: ApexCharts | null = null
 
+function formatDateForBackend(date: Date, startOfDay = true): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  const time = startOfDay ? '00:00:00' : '23:59:59'
+  return `${y}-${m}-${d} ${time}`
+}
+
 const dateRange = computed(() => {
-  const end = new Date()
-  const start = new Date()
+  const now = new Date()
+  now.setHours(23, 59, 59, 999)
+  
+  let start = new Date(now)
 
   if (filterType.value === 'day') {
+    // Apenas o dia atual completo
     start.setHours(0, 0, 0, 0)
-    end.setHours(23, 59, 59, 999)
   } else if (filterType.value === 'week') {
-    const day = start.getDay()
-    const diff = start.getDate() - day + (day === 0 ? -6 : 1)
-    start.setDate(diff)
+    // De 26/10 até hoje (02/11) = 8 dias completos
+    // Para sempre pegar do dia 26 até hoje
+    start.setDate(start.getDate() - 7) // -7 para incluir 8 dias (26 até 02)
     start.setHours(0, 0, 0, 0)
-    end.setHours(23, 59, 59, 999)
   } else if (filterType.value === 'month') {
-    start.setMonth(start.getMonth() - 1)
-    start.setDate(1)
+    // Últimos 30 dias completos (incluindo hoje)
+    start.setDate(start.getDate() - 29)
     start.setHours(0, 0, 0, 0)
-    
-    end.setDate(0)
-    end.setHours(23, 59, 59, 999)
   }
 
-  return {
-    start_date: start.toISOString().split('T')[0] + ' 00:00:00',
-    end_date: end.toISOString().split('T')[0] + ' 23:59:59'
+  const result = {
+    start_date: formatDateForBackend(start, true),
+    end_date: formatDateForBackend(now, false)
   }
+
+  console.log('📅 Filtro:', filterType.value)
+  console.log('📅 Período:', result.start_date, 'até', result.end_date)
+  console.log('📅 Total de dias:', Math.ceil((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1)
+  
+  return result
 })
 
 async function fetchCashFlow() {
@@ -47,7 +59,16 @@ async function fetchCashFlow() {
   try {
     const dto = new TemporalInputDto(dateRange.value)
     const response = await dashboardService.getCashFlowChart(dto)
-    cashFlowData.value = Array.isArray(response) ? response : (response as any).data || []
+    
+    // Extrai os dados corretamente
+    if (Array.isArray(response)) {
+      cashFlowData.value = response
+    } else if (response && typeof response === 'object' && 'data' in response) {
+      const dataArray = (response as { data: CashFlowByDayDTO[] }).data
+      cashFlowData.value = Array.isArray(dataArray) ? dataArray : []
+    } else {
+      cashFlowData.value = []
+    }
     
     await new Promise(resolve => setTimeout(resolve, 0))
     renderChart()
@@ -62,27 +83,19 @@ async function fetchCashFlow() {
 const cashFlowFormatted = computed(() =>
   cashFlowData.value.map(item => ({
     data: new Date(item.day),
-    faturamento: item.totalSalesAmount,
+    vendas: item.totalSales,
     valorPago: item.totalValuePaid,
-    ticketMedio: item.averageTicket,
-    desconto: item.totalDiscount,
-    acrescimo: item.totalIncrease,
-    taxaEntrega: item.totalDeliveryFee,
-    taxaServico: item.totalServiceTaxFee
+    ticketMedio: item.averageTicket
   }))
 )
 
 const exportData = computed(() =>
   cashFlowFormatted.value.map(item => ({
     Data: item.data.toLocaleDateString('pt-BR'),
-    'Faturamento': `R$ ${item.faturamento.toFixed(2)}`,
+    'Total de Vendas': item.vendas,
     'Valor Pago': `R$ ${item.valorPago.toFixed(2)}`,
     'Ticket Médio': `R$ ${item.ticketMedio.toFixed(2)}`,
-    'Desconto': `R$ ${item.desconto.toFixed(2)}`,
-    'Acréscimo': `R$ ${item.acrescimo.toFixed(2)}`,
-    'Taxa Entrega': `R$ ${item.taxaEntrega.toFixed(2)}`,
-    'Taxa Serviço': `R$ ${item.taxaServico.toFixed(2)}`,
-    Período: filterType.value,
+    Período: filterType.value === 'day' ? 'Dia' : filterType.value === 'week' ? 'Semana (últimos 8 dias)' : 'Mês (últimos 30 dias)',
     'Data Início': dateRange.value.start_date,
     'Data Fim': dateRange.value.end_date
   }))
@@ -94,21 +107,25 @@ function formatarCategoria(date: Date): string {
   } else if (filterType.value === 'week') {
     const dayName = date.toLocaleDateString('pt-BR', { weekday: 'short' })
     const day = date.getDate()
-    return `${dayName.charAt(0).toUpperCase() + dayName.slice(1)} ${day}`
+    const month = date.getMonth() + 1
+    return `${dayName.charAt(0).toUpperCase() + dayName.slice(1)} ${day}/${month}`
   } else {
     return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
   }
 }
 
 function renderChart() {
-  if (!cashFlowFormatted.value.length) return
+  if (!cashFlowFormatted.value.length) {
+    console.warn('⚠️ Nenhum dado para renderizar o gráfico')
+    return
+  }
 
-  const sortedData = [...cashFlowFormatted.value].sort((a, b) => 
-    a.data.getTime() - b.data.getTime()
-  )
-
+  const sortedData = [...cashFlowFormatted.value].sort((a, b) => a.data.getTime() - b.data.getTime())
   const categories = sortedData.map(item => formatarCategoria(item.data))
-  const faturamento = sortedData.map(item => item.faturamento)
+  const valores = sortedData.map(item => item.valorPago)
+
+  console.log('📈 Renderizando gráfico com', valores.length, 'pontos')
+  console.log('📈 Categorias:', categories)
 
   const options = {
     chart: {
@@ -116,109 +133,81 @@ function renderChart() {
       height: 380,
       toolbar: { show: false },
       foreColor: '#9ca3af',
-      animations: {
-        enabled: true,
-        easing: 'easeinout',
-        speed: 800
-      }
+      animations: { enabled: true, easing: 'easeinout', speed: 800 }
     },
-    series: [
-      {
-        name: 'Faturamento',
-        data: faturamento
-      }
-    ],
+    series: [{ name: 'Valor Pago', data: valores }],
     colors: ['#10b981'],
-    plotOptions: {
-      bar: {
-        borderRadius: 8,
-        columnWidth: '60%'
-      }
-    },
-    dataLabels: {
-      enabled: false
-    },
+    plotOptions: { bar: { borderRadius: 8, columnWidth: '60%' } },
+    dataLabels: { enabled: false },
     xaxis: {
       categories,
       axisBorder: { color: '#374151' },
       axisTicks: { color: '#374151' },
-      labels: {
-        style: {
-          colors: '#9ca3af',
-          fontSize: '11px'
-        },
-        rotate: -45,
-        rotateAlways: filterType.value === 'month'
+      labels: { 
+        style: { colors: '#9ca3af', fontSize: '11px' }, 
+        rotate: -45, 
+        rotateAlways: filterType.value === 'month' 
       }
     },
     yaxis: {
-      title: {
-        text: 'Faturamento (R$)',
-        style: { color: '#9ca3af' }
-      },
+      title: { text: 'Valor Pago (R$)', style: { color: '#9ca3af' } },
       labels: {
         formatter: (val: number) => `R$ ${val.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
-        style: {
-          colors: '#9ca3af',
-          fontSize: '11px'
-        }
+        style: { colors: '#9ca3af', fontSize: '11px' }
       }
     },
     tooltip: {
       theme: 'dark',
-      y: {
-        formatter: (val: number) => `R$ ${val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      y: { 
+        formatter: (val: number) => `R$ ${val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
       }
     },
-    grid: {
-      borderColor: '#374151',
-      row: {
-        colors: ['transparent'],
-        opacity: 0.5
-      },
-      padding: {
-        bottom: 10
-      }
+    grid: { 
+      borderColor: '#374151', 
+      row: { colors: ['transparent'], opacity: 0.5 }, 
+      padding: { bottom: 10 } 
     }
   }
 
-  if (chart) chart.destroy()
+  if (chart) {
+    chart.destroy()
+    chart = null
+  }
+  
   chart = new ApexCharts(document.querySelector("#cashFlowChart") as HTMLElement, options)
   chart.render()
 }
 
 watch(filterType, () => fetchCashFlow())
-
 onMounted(() => fetchCashFlow())
 </script>
 
 <template>
   <div class="relative bg-[#262b32] border border-gray-700 rounded-2xl p-6 shadow">
-    <!-- Exportação -->
     <div class="absolute top-2 right-2">
       <ExportButtons :data="exportData" :filename="`fluxo_caixa_${filterType}`" />
     </div>
 
-    <!-- Título -->
-    <h2 class="text-xl font-bold text-gray-200 mb-2">Faturamento</h2>
-    <p class="text-gray-400 mb-4">Acompanhe a evolução do faturamento do seu restaurante.</p>
+    <h2 class="text-xl font-bold text-gray-200 mb-2">Fluxo de Caixa</h2>
+    <p class="text-gray-400 mb-4">
+      Acompanhe a evolução do valor pago 
+      <span v-if="filterType === 'day'">no dia atual</span>
+      <span v-else-if="filterType === 'week'">na última semana</span>
+      <span v-else>nos últimos 30 dias</span>
+    </p>
 
-    <!-- Filtros -->
     <div class="mb-4">
       <TimeFilter v-model="filterType" />
     </div>
 
-    <!-- Loading state -->
     <div v-if="isLoading" class="flex justify-center items-center py-8">
       <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500"></div>
     </div>
 
-    <!-- Empty state -->
     <div v-else-if="cashFlowFormatted.length === 0" class="text-center py-8 text-gray-400">
       Nenhum dado disponível para o período selecionado
     </div>
 
-    <!-- Gráfico -->
     <div id="cashFlowChart" class="w-full h-96" v-show="cashFlowFormatted.length > 0"></div>
   </div>
 </template>
