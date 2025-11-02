@@ -1,6 +1,5 @@
 import type { CashFlowByDayDTO } from "@/DTO/CashFlowByDayDto";
 import { CustomerRetentionDTO } from "@/DTO/CustomerRetentionDto";
-import type { DeliveryLocationDTO } from "@/DTO/DeliveryLocationDto";
 import type { PaymentsByTypeDTO } from "@/DTO/PaymentsByTypeDto";
 import type { RegionPerformanceDTO } from "@/DTO/RegionPerformanceDto";
 import type { SalesByChannelDescriptionDTO } from "@/DTO/SalesByChannelDescriptionDto";
@@ -16,11 +15,6 @@ export default class DashboardService {
 
   async getCashFlowChart(data: TemporalInputDto): Promise<CashFlowByDayDTO[]> {
     const response = await this.http.post<CashFlowByDayDTO[]>('/dashboard/cashFlowChart', data);
-    return response.data;
-  }
-
-  async getDeliveryLocationsChart(data: TemporalInputDto): Promise<DeliveryLocationDTO[]> {
-    const response = await this.http.post<DeliveryLocationDTO[]>('/dashboard/deliveryLocationsChart', data);
     return response.data;
   }
 

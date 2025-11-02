@@ -58,10 +58,7 @@ onMounted(() => fetchDashboardMetrics())
   />
 
   <main class="max-w-7xl mx-auto px-4 py-6 grid lg:grid-cols-12 gap-8">
-    <!-- Seção principal -->
     <section class="lg:col-span-8 flex flex-col space-y-8">
-      
-      <!-- Cards do dashboard -->
       <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
         <CardDashboard 
           v-for="(card, index) in cards" 
